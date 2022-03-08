@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/jeandet/FFT
+revision = main
+
+[provide]
+fft = FFT_dep
+
