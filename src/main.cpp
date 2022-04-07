@@ -1,16 +1,17 @@
 #include "SnifferPannel.hpp"
-#include <FFT/FFT.hpp>
-#include <Graph.hpp>
+#include "file_splitter.hpp"
 #include <QApplication>
-#include <QCustomPlotWrapper.hpp>
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QMainWindow>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRandomGenerator>
-#include <SciQLopPlot.hpp>
 #include <channels/pipelines.hpp>
 #include <cmath>
+#include <cppconfig/cppconfig.hpp>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -20,63 +21,134 @@
 using namespace channels::operators;
 using namespace channels;
 using namespace std::placeholders;
+using FSpliter = FileSplitter<3, 1024 * 1024 * 32>;
 
-std::array colors_list = { Qt::blue, Qt::red, Qt::green, Qt::lightGray, Qt::darkBlue };
 
-using PicoWrapper_t = PicoWrapper<PS4000A_CHANNEL_A, PS4000A_CHANNEL_B, PS4000A_CHANNEL_C>;
+template <typename T, typename U>
+inline void scm_handler(T& SCM, U* scm_pan, FSpliter& f)
+{
+    std::vector<scm_data> buffer;
+    if (auto v = SCM.take(); v)
+        buffer = std::move(*v);
+    else
+        return;
+    f.append((char*)buffer.data(), std::size(buffer) * sizeof(scm_data));
+    std::vector<scm_data> plot_buffer;
+    if (auto b = SnifferPannel::buffer_pool::pop(); b)
+        plot_buffer = std::move(*b);
+    plot_buffer.resize(std::size(buffer));
+    std::memcpy(plot_buffer.data(), buffer.data(), std::size(buffer) * sizeof(scm_data));
+    scm_pan->input.add(std::move(plot_buffer));
+    PicoWrapper::buffer_pool::push(std::move(buffer));
+}
+
+
+struct Connector
+{
+    SnifferPannel *scm1_pan, *scm2_pan;
+    PicoWrapper& pico_scope;
+    std::thread thread;
+    std::atomic<bool> running { false };
+    Connector(SnifferPannel* scm1_pan, SnifferPannel* scm2_pan, PicoWrapper& pico_scope)
+            : scm1_pan { scm1_pan }, scm2_pan { scm2_pan }, pico_scope { pico_scope }
+    {
+    }
+
+    void start()
+    {
+        pico_scope.start();
+        this->running.store(true);
+        thread = std::thread(
+            [this]()
+            {
+                auto f1 = FSpliter(std::string { "scm1-" });
+                auto f2 = FSpliter(std::string { "scm2-" });
+                f1.open();
+                f2.open();
+
+                while (this->running.load() && !pico_scope.SCM[0].closed()
+                    && !pico_scope.SCM[1].closed())
+                {
+                    scm_handler(pico_scope.SCM[0], scm1_pan, f1);
+                    scm_handler(pico_scope.SCM[1], scm2_pan, f2);
+                }
+                pico_scope.stop();
+            });
+        pthread_setname_np(thread.native_handle(), "Connector_thread");
+    }
+    void stop()
+    {
+        this->running.store(false);
+        if (thread.joinable())
+            thread.join();
+    }
+
+    ~Connector() { stop(); }
+};
+
+cppconfig::Config load_config()
+{
+    auto home = getenv("HOME");
+    if (home)
+    {
+        auto cfg = std::string(home) + "/.config/scarface/config.yaml";
+        return cppconfig::from_yaml(std::filesystem::path(cfg));
+    }
+    return {};
+}
 
 int main(int argc, char* argv[])
 {
 
     QApplication app { argc, argv };
+    auto config = load_config();
+    PicoWrapper pico_scope(config["picoscope"]["sampling_period_ns"].to<int>(50));
     QMainWindow mainw;
+    if (!pico_scope.ready())
+    {
+        QMessageBox::critical(
+            &mainw, "Scarface Error", "Can't open picoscope check USB and try again");
+        return -1;
+    }
     mainw.setCentralWidget(new QWidget);
     auto wdgt = mainw.centralWidget();
-    auto pps_label = new QLabel();
-    SnifferPannel* pan = new SnifferPannel;
-    wdgt->setLayout(new QVBoxLayout);
-    wdgt->layout()->addWidget(pan);
-
-    PicoWrapper_t pico_scope { 128 * 1024 * 1024 / 4 };
-
-
-    pico_scope.start();
-    constexpr std::size_t channels_count = decltype(pico_scope)::channels_count;
-    auto th = std::thread(
-        [&pico_scope, pan]()
+    auto sampling_freq_label
+        = new QLabel(QString::number(pico_scope.sampling_frequency() / 1000.) + "kHz");
+    auto start_stop = new QAction("Sart");
+    mainw.menuBar()->addAction(start_stop);
+    mainw.statusBar()->addWidget(sampling_freq_label);
+    SnifferPannel* scm1_pan
+        = new SnifferPannel { pico_scope.voltage_resolution(), pico_scope.sampling_frequency() };
+    SnifferPannel* scm2_pan
+        = new SnifferPannel { pico_scope.voltage_resolution(), pico_scope.sampling_frequency() };
+    Connector connector(scm1_pan, scm2_pan, pico_scope);
+    QObject::connect(start_stop, &QAction::triggered,
+        [start_stop, &connector, &pico_scope, sampling_freq_label, scm1_pan, scm2_pan]()
         {
-            while (!pico_scope.outputs[0].closed() && !pico_scope.outputs[1].closed()
-                && !pico_scope.outputs[2].closed())
+            if (!pico_scope.is_running())
             {
-                std::array<std::vector<int16_t>, 3> buffers;
-                for (auto i = 0UL; i < channels_count; i++)
-                {
-                    auto v = pico_scope.outputs[i].take();
-                    if (v)
-                    {
-                        buffers[i] = std::move(*v);
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
-                std::vector<measurement> plot_buffer;
-                if (auto b = SnifferPannel::buffer_pool::pop(); b)
-                    plot_buffer = std::move(*b);
-                plot_buffer.resize(std::size(buffers[0]));
-                for (auto i = 0UL; i < std::size(buffers[0]); i++)
-                {
-                    plot_buffer[i] = { buffers[0][i], buffers[1][i], buffers[2][i] };
-                }
-                pan->input.add(std::move(plot_buffer));
-                for (auto i = 0UL; i < channels_count; i++)
-                {
-                    PicoWrapper_t::buffer_pool::push(std::move(buffers[i]));
-                }
+                start_stop->setText("Stop");
+                connector.start();
+                const auto fs = pico_scope.sampling_frequency();
+                scm1_pan->update_sampling_frequency(fs);
+                scm2_pan->update_sampling_frequency(fs);
+                sampling_freq_label->setText(QString::number(fs / 1000.) + "kHz");
+                while (!pico_scope.is_running())
+                    ;
+            }
+            else
+            {
+                start_stop->setText("Start");
+                connector.stop();
+                while (pico_scope.is_running())
+                    ;
             }
         });
 
+
+    wdgt->setLayout(new QHBoxLayout);
+    wdgt->layout()->addWidget(scm1_pan);
+    wdgt->layout()->addWidget(scm2_pan);
 
     mainw.setMinimumSize(1024, 768);
     mainw.show();

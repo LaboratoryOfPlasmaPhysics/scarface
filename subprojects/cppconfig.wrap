@@ -1,0 +1,6 @@
+[wrap-git]
+url = https://github.com/LaboratoryOfPlasmaPhysics/cppconfig
+revision = main
+
+[provide]
+cppconfig = cppconfig_dep

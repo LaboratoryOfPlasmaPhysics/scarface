@@ -13,9 +13,9 @@ qt5gui = dependency('qt5', modules : 'Gui')
 qt5svg = dependency('qt5', modules : 'Svg')
 qt5test = dependency('qt5', modules : 'Test')
 
-SciQLopPlots_dep = dependency('SciQLopPlots', fallback : ['SciQLopPlots', 'SciQLopPlots_dep'])
+QCustomPlot_dep = dependency('QCustomPlot', fallback : ['QCustomPlot', 'QCustomPlot_dep'])
 cpp_utils_dep = dependency('cpp_utils')
-range_dep = dependency('range-v3',  fallback : ['range-v3', 'range_dep'])
+cppconfig_dep = dependency('cppconfig')
 channels_dep = dependency('channels')
 fft_dep = dependency('fft')
 thread_dep = dependency('threads')
@@ -26,14 +26,6 @@ pico_4000a_lib = meson.get_compiler('c').find_library('ps4000a', dirs: ['/opt/pi
 
 pico_4000a_dep = declare_dependency(include_directories: pico_4000a_inc, dependencies: [pico_4000a_lib])
 pico_wrapper_dep = declare_dependency(include_directories: ['includes'], dependencies: [pico_4000a_dep, channels_dep])
-
-
-cmake = import('cmake')
-
-
-HighFive = cmake.subproject('HighFive')
-
-HighFive_lib = HighFive.dependency('HighFive')
 
 subdir('src')
 subdir('tests')
