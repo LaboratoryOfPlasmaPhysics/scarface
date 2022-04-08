@@ -206,12 +206,12 @@ std::array colors_list = { QColor { qRgb(2, 92, 168) }, QColor { qRgb(231, 48, 6
 Plot::Plot(double voltage_resolution, double sampling_frequency, int graph_count, int color_offset) : QCustomPlot()
 {
     this->setPlottingHint(QCP::phFastPolylines, true);
-    while (graph_count--)
+    for(int i=0;i<graph_count;i++)
     {
         auto graph = this->addGraph();
         graph->setAdaptiveSampling(true);
         auto pen = graph->pen();
-        pen.setColor(colors_list[graph_count+color_offset]);
+        pen.setColor(colors_list[i+color_offset]);
         graph->setPen(pen);
     }
     this->setInteractions(QCP::Interaction::iRangeDrag | QCP::Interaction::iRangeZoom
@@ -295,6 +295,9 @@ ColorMapPlot::ColorMapPlot(double voltage_resolution, double sampling_frequency)
     colorMap->setGradient(QCPColorGradient::gpJet);
     colorMap->rescaleDataRange(true);
     colorMap->setInterpolate(false);
+    this->yAxis->setScaleType(QCPAxis::stLogarithmic);
+    QSharedPointer<QCPAxisTickerLog> logTicker(new QCPAxisTickerLog);
+    this->yAxis->setTicker(logTicker);
     this->rescaleAxes();
 }
 
