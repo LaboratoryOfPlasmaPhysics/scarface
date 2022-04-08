@@ -2,6 +2,7 @@
 #include "file_splitter.hpp"
 #include <QApplication>
 #include <QElapsedTimer>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMenu>
@@ -23,6 +24,14 @@ using namespace channels;
 using namespace std::placeholders;
 using FSpliter = FileSplitter<3, 1024 * 1024 * 32>;
 
+struct TestEnv
+{
+    QString description;
+    QString output_folder;
+    double sampling_frequency;
+    double quantum;
+};
+
 
 template <typename T, typename U>
 inline void scm_handler(T& SCM, U* scm_pan, FSpliter& f)
@@ -42,6 +51,15 @@ inline void scm_handler(T& SCM, U* scm_pan, FSpliter& f)
     PicoWrapper::buffer_pool::push(std::move(buffer));
 }
 
+void save_context(const QString& path, const TestEnv& env)
+{
+    cppconfig::Config c;
+    c["sampling_frequency"] = env.sampling_frequency;
+    c["quantum"] = env.quantum;
+    c["description"] = env.description.toStdString();
+    c["start_time"] = QDateTime::currentDateTime().toString().toStdString();
+    cppconfig::to_json(std::filesystem::path(path.toStdString())/"context.json",c);
+}
 
 struct Connector
 {
@@ -54,15 +72,24 @@ struct Connector
     {
     }
 
-    void start()
+    void start(const TestEnv env)
     {
         pico_scope.start();
+        QString output_folder(
+            env.output_folder + '/' + QDateTime::currentDateTime().toString("yyyy-MM-ddThh.mm.ss"));
+        if (!QDir(output_folder).exists())
+        {
+            QDir(output_folder).mkpath(output_folder);
+        }
+
+        save_context(output_folder,env);
+
         this->running.store(true);
         thread = std::thread(
-            [this]()
+            [this, output_folder]()
             {
-                auto f1 = FSpliter(std::string { "scm1-" });
-                auto f2 = FSpliter(std::string { "scm2-" });
+                auto f1 = FSpliter((output_folder + "/scm1-").toStdString());
+                auto f2 = FSpliter((output_folder + "/scm2-").toStdString());
                 f1.open();
                 f2.open();
 
@@ -86,12 +113,22 @@ struct Connector
     ~Connector() { stop(); }
 };
 
-cppconfig::Config load_config()
+std::string home_folder()
 {
     auto home = getenv("HOME");
     if (home)
     {
-        auto cfg = std::string(home) + "/.config/scarface/config.yaml";
+        return std::string(home);
+    }
+    return {};
+}
+
+cppconfig::Config load_config()
+{
+    auto home = home_folder();
+    if (!home.empty())
+    {
+        auto cfg = home + "/.config/scarface/config.yaml";
         return cppconfig::from_yaml(std::filesystem::path(cfg));
     }
     return {};
@@ -102,6 +139,7 @@ int main(int argc, char* argv[])
 
     QApplication app { argc, argv };
     auto config = load_config();
+    auto output_folder = config["output_folder"].to<std::string>(home_folder() + "/Juice_data");
     PicoWrapper pico_scope(config["picoscope"]["sampling_period_ns"].to<int>(50));
     QMainWindow mainw;
     if (!pico_scope.ready())
@@ -120,15 +158,19 @@ int main(int argc, char* argv[])
     SnifferPannel* scm1_pan
         = new SnifferPannel { pico_scope.voltage_resolution(), pico_scope.sampling_frequency() };
     SnifferPannel* scm2_pan
-        = new SnifferPannel { pico_scope.voltage_resolution(), pico_scope.sampling_frequency() };
+        = new SnifferPannel { pico_scope.voltage_resolution(), pico_scope.sampling_frequency(), 3 };
     Connector connector(scm1_pan, scm2_pan, pico_scope);
     QObject::connect(start_stop, &QAction::triggered,
-        [start_stop, &connector, &pico_scope, sampling_freq_label, scm1_pan, scm2_pan]()
+        [start_stop, &connector, &pico_scope, sampling_freq_label, scm1_pan, scm2_pan,
+            mainw = &mainw, &output_folder]()
         {
             if (!pico_scope.is_running())
             {
+                auto desc
+                    = QInputDialog::getMultiLineText(mainw, "Test description", "description");
                 start_stop->setText("Stop");
-                connector.start();
+                connector.start(TestEnv { desc, QString::fromStdString(output_folder),
+                    pico_scope.sampling_frequency(), pico_scope.voltage_resolution() });
                 const auto fs = pico_scope.sampling_frequency();
                 scm1_pan->update_sampling_frequency(fs);
                 scm2_pan->update_sampling_frequency(fs);

@@ -20,7 +20,7 @@ class Plot:public QCustomPlot
 protected:
     std::mutex m_mutex;
 public:
-    Plot(double voltage_resolution, double sampling_frequency,int graph_count);
+    Plot(double voltage_resolution, double sampling_frequency,int graph_count,int color_offset=0);
     void keyPressEvent(QKeyEvent* event) override;
     void set_data(const QVector<QCPGraphData>& data, int graph_index=0);
     void set_log_y(bool log);
@@ -51,7 +51,7 @@ public:
     using buffer_pool = buffer_recycler<std::vector<scm_data>>;
     channels::channel<std::vector<scm_data>, 2, channels::full_policy::overwrite_last> input;
     channels::channel<std::vector<double>, 2, channels::full_policy::overwrite_last> ffts;
-    SnifferPannel(double voltage_resolution, double sampling_frequency, QWidget*parent=nullptr);
+    SnifferPannel(double voltage_resolution, double sampling_frequency,int color_offset=0, QWidget*parent=nullptr);
     ~SnifferPannel();
     void update_sampling_frequency(double sampling_frequency);
 };

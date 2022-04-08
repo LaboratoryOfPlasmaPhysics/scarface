@@ -29,3 +29,5 @@ pico_wrapper_dep = declare_dependency(include_directories: ['includes'], depende
 
 subdir('src')
 subdir('tests')
+subdir('resources')
+

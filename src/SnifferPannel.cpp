@@ -17,10 +17,10 @@ inline void removeAllMargins(QWidget* widget)
 }
 
 
-SnifferPannel::SnifferPannel(double voltage_resolution, double sampling_frequency, QWidget* parent)
+SnifferPannel::SnifferPannel(double voltage_resolution, double sampling_frequency, int color_offset, QWidget* parent)
         : QWidget(parent)
-        , wf_plot { new Plot(voltage_resolution, sampling_frequency, 3) }
-        , fft_plot { new Plot(voltage_resolution, sampling_frequency, 3) }
+        , wf_plot { new Plot(voltage_resolution, sampling_frequency, 3, color_offset) }
+        , fft_plot { new Plot(voltage_resolution, sampling_frequency, 3, color_offset) }
         , spectro_plot { new ColorMapPlot(voltage_resolution, sampling_frequency) }
         , sampling_frequency { sampling_frequency }
 {
@@ -198,10 +198,12 @@ void SnifferPannel::update_sampling_frequency(double sampling_frequency)
     this->spectro_plot->update_sampling_frequency(sampling_frequency);
 }
 
-std::array colors_list = { Qt::blue, Qt::red, Qt::green, Qt::lightGray, Qt::darkBlue };
+std::array colors_list = { QColor { qRgb(2, 92, 168) }, QColor { qRgb(231, 48, 66) },
+    QColor { qRgb(0, 160, 116) }, QColor { qRgb(229, 202, 117) }, QColor { qRgb(115, 77, 152) },
+    QColor { qRgb(146, 154, 166) } };
 
 
-Plot::Plot(double voltage_resolution, double sampling_frequency, int graph_count) : QCustomPlot()
+Plot::Plot(double voltage_resolution, double sampling_frequency, int graph_count, int color_offset) : QCustomPlot()
 {
     this->setPlottingHint(QCP::phFastPolylines, true);
     while (graph_count--)
@@ -209,7 +211,7 @@ Plot::Plot(double voltage_resolution, double sampling_frequency, int graph_count
         auto graph = this->addGraph();
         graph->setAdaptiveSampling(true);
         auto pen = graph->pen();
-        pen.setColor(colors_list[graph_count]);
+        pen.setColor(colors_list[graph_count+color_offset]);
         graph->setPen(pen);
     }
     this->setInteractions(QCP::Interaction::iRangeDrag | QCP::Interaction::iRangeZoom
@@ -221,6 +223,7 @@ Plot::Plot(double voltage_resolution, double sampling_frequency, int graph_count
     {
         rect->setMargins(QMargins { 0, 0, 0, 0 });
     }
+    this->setOpenGl(true,4);
 }
 
 
