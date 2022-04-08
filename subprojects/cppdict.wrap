@@ -1,2 +1,6 @@
-[wrap-redirect]
-filename = cppconfig/subprojects/cppdict.wrap
+[wrap-git]
+url = https://github.com/LaboratoryOfPlasmaPhysics/cppdict
+revision = master
+
+[provide]
+cppdict = cppdict_dep

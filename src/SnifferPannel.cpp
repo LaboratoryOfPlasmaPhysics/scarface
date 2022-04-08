@@ -291,7 +291,7 @@ ColorMapPlot::ColorMapPlot(double voltage_resolution, double sampling_frequency)
     colorMap = new QCPColorMap(this->xAxis, this->yAxis);
     colorMap->data()->setSize(fft_t::fft_size / 32, fft_t::fft_size / 2);
     colorMap->data()->setRange(
-        QCPRange(0, colorMap->data()->keySize()), QCPRange(0, sampling_frequency / 2));
+        QCPRange(0, colorMap->data()->keySize()), QCPRange(0.1, sampling_frequency / 2));
     colorMap->setGradient(QCPColorGradient::gpJet);
     colorMap->rescaleDataRange(true);
     colorMap->setInterpolate(false);
@@ -340,5 +340,5 @@ void ColorMapPlot::update_sampling_frequency(double sampling_frequency)
 {
     this->sampling_frequency = sampling_frequency;
     this->colorMap->data()->setRange(
-        QCPRange(0, colorMap->data()->keySize()), QCPRange(0, sampling_frequency / 2));
+        QCPRange(0, colorMap->data()->keySize()), QCPRange(0.1, sampling_frequency / 2));
 }
