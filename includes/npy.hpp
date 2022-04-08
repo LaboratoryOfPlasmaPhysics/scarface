@@ -23,6 +23,7 @@ struct NpyFile
         for (int i = 0; i < 0x80 - 1; i++)
             fputc(0x20, fp);
         fputc('\n', fp);
+        lines=0;
     }
 
     inline void append(const std::vector<int32_t>& data)
